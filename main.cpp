@@ -1,103 +1,203 @@
 /*----------------------------------------------------------------------------*/
 /*                                                                            */
 /*    Module:       main.cpp                                                  */
-/*    Author:       VEX                                                       */
-/*    Created:      Thu Sep 26 2019                                           */
-/*    Description:  Competition Template                                      */
+/*    Author:       C:\Users\4248                                             */
+/*    Created:      Tue Mar 03 2020                                           */
+/*    Description:  V5 project                                                */
 /*                                                                            */
 /*----------------------------------------------------------------------------*/
 
 // ---- START VEXCODE CONFIGURED DEVICES ----
 // Robot Configuration:
 // [Name]               [Type]        [Port(s)]
-// Drivetrain           drivetrain    3, 1            
+// Drivetrain           drivetrain    9, 2            
+// ArmMotor             motor         8               
+// ClawMotor            motor         3               
+// LeftTracker          line          A               
+// RightTracker         line          B               
+// MiddleTracker        line          C               
 // ---- END VEXCODE CONFIGURED DEVICES ----
 
 #include "vex.h"
 
 using namespace vex;
 
-// A global instance of competition
-competition Competition;
+class LightSensors {
+public:
+  LightSensors(line& left, line& middle, line& right, int threshold);
+  bool leftOn();
+  bool middleOn();
+  bool rightOn();
+  void setThreshold(int threshold);
 
-// define your global instances of motors and other devices here
-vex::motor Claw = vex::motor(vex::PORT3);
-vex::motor Arm = vex::motor(vex::PORT8); 
+private:
+  line& left;
+  line& middle;
+  line& right;
+  int threshold;
+};
 
-/*---------------------------------------------------------------------------*/
-/*                          Pre-Autonomous Functions                         */
-/*                                                                           */
-/*  You may want to perform some actions before the competition starts.      */
-/*  Do them in the following function.  You must return from this function   */
-/*  or the autonomous and usercontrol tasks will not be started.  This       */
-/*  function is only called once after the V5 has been powered on and        */
-/*  not every time that the robot is disabled.                               */
-/*---------------------------------------------------------------------------*/
+LightSensors::LightSensors(line& left, line& middle, line& right, int threshold)
+  : left(left), middle(middle), right(right), threshold(threshold) {
+  
+};
 
-void pre_auton(void) {
+bool LightSensors::leftOn() {
+  return this->left.reflectivity() > this->threshold;
+}
+
+bool LightSensors::middleOn() {
+  return this->middle.reflectivity() > this->threshold;
+}
+
+bool LightSensors::rightOn() {
+  return this->right.reflectivity() > this->threshold;
+}
+
+void LightSensors::setThreshold(int threshold) {
+  this->threshold = threshold;
+}
+
+class PickerUpper {
+public:
+  PickerUpper(motor& claw, motor& arm);
+  void pickUp();
+  void putDown();
+  bool getIsUp();
+
+private:
+  motor& claw;
+  motor& arm;
+  bool isUp;
+};
+
+PickerUpper::PickerUpper(motor& claw, motor& arm)
+: claw(claw), arm(arm) {
+
+}
+
+void PickerUpper::pickUp() {
+  if (this->isUp)
+    return;
+  
+  // TODO: remember to ensure it is blocking (i.e. it waits for it to finish) here
+  Drivetrain.stop();
+  ArmMotor.spinFor(60, degrees);
+
+  this->isUp = true;
+}
+
+void PickerUpper::putDown() {
+  if (!this->isUp)
+    return;
+
+  // TODO: remember to ensure it is blocking (i.e. it waits for it to finish) here
+  Drivetrain.stop();
+  ClawMotor.spinFor(20, degrees);
+  Drivetrain.driveFor(-1, inches);
+  ArmMotor.spinFor(-60, degrees);
+  this->isUp = false;
+}
+
+bool PickerUpper::getIsUp() {
+  return this->isUp;
+}
+
+int main() {
   // Initializing Robot Configuration. DO NOT REMOVE!
   vexcodeInit();
+    
+  LightSensors ls(LeftTracker, MiddleTracker, RightTracker, 90);
+  PickerUpper pu(ClawMotor, ArmMotor);
 
-  // All activities that occur before the competition starts
-  // Example: clearing encoders, setting servo positions, ...
-}
+  // for testing; remove this after implementing picking up automatically
+  pu.pickUp();
 
-/*---------------------------------------------------------------------------*/
-/*                                                                           */
-/*                              Autonomous Task                              */
-/*                                                                           */
-/*  This task is used to control your robot during the autonomous phase of   */
-/*  a VEX Competition.                                                       */
-/*                                                                           */
-/*  You must modify the code to add your own robot specific commands here.   */
-/*---------------------------------------------------------------------------*/
-
-void autonomous(void) {
-  // ..........................................................................
-  // Insert autonomous user code here.
-  // ..........................................................................
-}
-
-/*---------------------------------------------------------------------------*/
-/*                                                                           */
-/*                              User Control Task                            */
-/*                                                                           */
-/*  This task is used to control your robot during the user control phase of */
-/*  a VEX Competition.                                                       */
-/*                                                                           */
-/*  You must modify the code to add your own robot specific commands here.   */
-/*---------------------------------------------------------------------------*/
-
-void usercontrol(void) {
-  // User control code here, inside the loop
-  while (1) {
-    // This is the main execution loop for the user control program.
-    // Each time through the loop your program should update motor + servo
-    // values based on feedback from the joysticks.
-
-    // ........................................................................
-    // Insert user code here. This is where you use the joystick values to
-    // update your motors, etc.
-    // ........................................................................
-
-    wait(20, msec); // Sleep the task for a short amount of time to
-                    // prevent wasted resources.
-  }
-}
-
-//
-// Main will set up the competition functions and callbacks.
-//
-int main() {
-  // Set up callbacks for autonomous and driver control periods.
-  Competition.autonomous(autonomous);
-  Competition.drivercontrol(usercontrol);
-
-  // Run the pre-autonomous function.
-  pre_auton();
-
-  // Prevent main from exiting with an infinite loop.
   while (true) {
-    wait(100, msec);
+    // read the sensors
+    bool leftOn = ls.leftOn();
+    bool rightOn = ls.rightOn();
+    bool middleOn = ls.middleOn();
+  
+    // check if it's at the end, if so, do an action (blocking, i.e. wait for it to finish), and "continue" the loop
+    while (true){
+      while (leftOn&&!middleOn){
+        Drivetrain.setTurnVelocity(10, rpm);
+        Drivetrain.turn(right);
+      }
+
+      while (rightOn&&!middleOn){
+        Drivetrain.setTurnVelocity(10, rpm);
+        Drivetrain.turn(left);
+      }
+
+      while(middleOn){
+        Drivetrain.setDriveVelocity(10, rpm);
+        Drivetrain.drive(forward);
+      }
+      if (leftOn && middleOn && rightOn) {
+          break;
+        }
+      }
+
+      if (pu.getIsUp()) {
+          // THIS SHOULD NEVER HAPPEN, show an error
+          Brain.Screen.print("ERROR - pickerUpper is up");
+          pu.putDown();
+      pu.pickUp();
+
+      Drivetrain.turnFor(180, degrees);
+
+    while (true){
+      while (leftOn&&!middleOn){
+        Drivetrain.setTurnVelocity(10, rpm);
+        Drivetrain.turn(right);
+      }
+
+      while (rightOn&&!middleOn){
+        Drivetrain.setTurnVelocity(10, rpm);
+        Drivetrain.turn(left);
+      }
+
+      while(middleOn){
+        Drivetrain.setDriveVelocity(10, rpm);
+        Drivetrain.drive(forward);
+      }
+      if (leftOn && middleOn && rightOn) {
+        break;
+      }
+    }
+
+    //Assuming in front of tee, put the ball down.
+    pu.putDown();
+
+    Drivetrain.turnFor(-90, degrees); //Turning left towards line leading to the next tee
+
+      // for testing:
+      Drivetrain.driveFor(5, inches);
+
+      // remember to turn if necessary here, as the line following loop will continue
+      continue; // read the sensors again before continuing
+    }
+    // check any other conditions, same thing, "continue" after
+    
+    Drivetrain.setDriveVelocity(20, rpm);
+    Drivetrain.drive(forward);
+
+    // START moving the motor to follow the line (i.e. don't wait for it to finish moving here, just set the speed)    
+  
+  }
+
+  while (ls.leftOn()&&!ls.middleOn()&&!ls.rightOn()){
+    Drivetrain.turn(left);
+  }
+  while (!ls.leftOn()&&!ls.middleOn()&&ls.rightOn()){
+    Drivetrain.turn(right);
+  }
+  while ((ls.leftOn()&&ls.middleOn())||ls.leftOn()) {
+    if(ls.rightOn()){
+      Drivetrain.turn(left);
+    }
   }
 }
+
